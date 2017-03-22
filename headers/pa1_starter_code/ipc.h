@@ -38,12 +38,12 @@ typedef enum {
 } MessageType;
 
 typedef struct {
-    uint16_t s_magic;        ///< magic signature, must be MESSAGE_MAGIC
-    uint16_t s_payload_len;  ///< length of payload
-    int16_t s_type;         ///< type of the message
-    timestamp_t s_local_time;   ///< set by sender, depends on particular PA:
-    ///< physical time in PA2 or Lamport's scalar
-    ///< time in PA3
+    uint16_t     s_magic;        ///< magic signature, must be MESSAGE_MAGIC
+    uint16_t     s_payload_len;  ///< length of payload
+    int16_t      s_type;         ///< type of the message
+    timestamp_t  s_local_time;   ///< set by sender, depends on particular PA:
+                                 ///< physical time in PA2 or Lamport's scalar
+                                 ///< time in PA3
 } __attribute__((packed)) MessageHeader;
 
 enum {
@@ -53,20 +53,20 @@ enum {
 typedef struct {
     MessageHeader s_header;
     char s_payload[MAX_PAYLOAD_LEN]; ///< Must be used as a buffer, unused "tail"
-    ///< shouldn't be transfered
+                                     ///< shouldn't be transfered
 } __attribute__((packed)) Message;
 
 //------------------------------------------------------------------------------
 
 /** Send a message to the process specified by id.
  *
- * @param self    Any data structure implemented by students to perform I/O2
+ * @param self    Any data structure implemented by students to perform I/O
  * @param dst     ID of recepient
  * @param msg     Message to send
  *
  * @return 0 on success, any non-zero value on error
  */
-int send(void *self, local_id dst, const Message *msg);
+int send(void * self, local_id dst, const Message * msg);
 
 //------------------------------------------------------------------------------
 
@@ -80,7 +80,7 @@ int send(void *self, local_id dst, const Message *msg);
  *
  * @return 0 on success, any non-zero value on error
  */
-int send_multicast(void *self, const Message *msg);
+int send_multicast(void * self, const Message * msg);
 
 //------------------------------------------------------------------------------
 
@@ -94,7 +94,7 @@ int send_multicast(void *self, const Message *msg);
  *
  * @return 0 on success, any non-zero value on error
  */
-int receive(void *self, local_id from, Message *msg);
+int receive(void * self, local_id from, Message * msg);
 
 //------------------------------------------------------------------------------
 
@@ -108,7 +108,7 @@ int receive(void *self, local_id from, Message *msg);
  *
  * @return 0 on success, any non-zero value on error
  */
-int receive_any(void *self, Message *msg);
+int receive_any(void * self, Message * msg);
 
 //------------------------------------------------------------------------------
 
