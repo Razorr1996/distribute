@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "common.h"
 #include "ipc.h"
@@ -26,13 +27,12 @@ typedef struct {
     pipeDes pDes[MAX_PROCESS_ID + 1][MAX_PROCESS_ID + 1];
 } __attribute__((packed)) LocalInfo;
 
-int logToFile(FILE *fp, const char *format, ...) {
+int logToFile(int fd, const char *format, ...) {
     va_list args;
     va_start (args, format);
     vprintf(format, args);
     va_start (args, format);
-    vfprintf(fp, format, args);
-    fflush(fp);
+    vdprintf(fd, format, args);
     va_end (args);
     return EXIT_SUCCESS;
 }
@@ -64,9 +64,9 @@ int main(int argc, char *argv[]) {
     memset(info->pDes, -1, sizeof(info->pDes));
     int opt, i;
     pid_t pid = 1;
-    FILE *eventFile = fopen(events_log, "a");//TODO Change fopen to open
-    if (eventFile == NULL) {
-        fprintf(stderr, "Cannot open events file.\n");
+    int eventFd = open(events_log, O_CREAT | O_WRONLY | O_APPEND);
+    if (eventFd == -1) {
+        strerror(errno);
         exit(EXIT_FAILURE);
     }
     opt = getopt(argc, argv, "p:");
@@ -82,11 +82,11 @@ int main(int argc, char *argv[]) {
         struct tm *timeinfo;
         time(&rawtime);
         timeinfo = localtime(&rawtime);
-        logToFile(eventFile, "\nTime: %s", asctime(timeinfo));
-        logToFile(eventFile, "nChild=%d\n", info->nChild);
-        logToFile(eventFile, "argc=%d\n", argc);
+        logToFile(eventFd, "\nTime: %s", asctime(timeinfo));
+        logToFile(eventFd, "nChild=%d\n", info->nChild);
+        logToFile(eventFd, "argc=%d\n", argc);
         for (i = 0; i < argc; ++i) {
-            logToFile(eventFile, "argv[%d]=%s\n", i, argv[i]);
+            logToFile(eventFd, "argv[%d]=%s\n", i, argv[i]);
         }
     }
 
@@ -121,10 +121,10 @@ int main(int argc, char *argv[]) {
     myMsg.s_header.s_local_time = 0L;
     myMsg.s_header.s_type = DONE;
 
-    logToFile(eventFile, log_started_fmt, info->localID, getpid(), getppid());
+    logToFile(eventFd, log_started_fmt, info->localID, getpid(), getppid());
 
     send(info, (local_id) (info->localID + 1) % (info->nChild + 1), &myMsg);
     //
-    fclose(eventFile);
+    close(eventFd);
     return EXIT_SUCCESS;
 }
