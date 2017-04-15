@@ -6,9 +6,17 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -pedantic")
 
 include_directories(headers)
 include_directories(headers/pa1_starter_code)
+include_directories(headers/pa2345_starter_code)
 
-set(SOURCE_FILES src/main.c)
-add_executable(1lab ${SOURCE_FILES})
+LINK_DIRECTORIES(library)
+LINK_LIBRARIES(runtime)
+
+set(SOURCE_FUNCTIONS src/functions.c)
+
+foreach (LV 1 2)
+    set(SOURCE_FILES${LV} ${SOURCE_FUNCTIONS} src/${LV}lab.c)
+    add_executable(${LV}lab ${SOURCE_FILES${LV}})
+endforeach (LV)
 
 set(SOURCE_FILES_TEST src/test.c)
 add_executable(myTest ${SOURCE_FILES_TEST})
