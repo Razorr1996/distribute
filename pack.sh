@@ -6,7 +6,10 @@ case "$1" in
         mkdir target
         mkdir target/$dir
         rm target/$dir/*
-        cp src/"$1"lab.c src/functions.c src/bank_robbery.c target/$dir #source code
+        cp src/"$1"lab.c src/functions.c target/$dir #source code
+        if [ "$1" != "1" ]; then
+            cp src/bank_robbery.c target/$dir
+        fi
         cp headers/*.h headers/*/*.h target/$dir #headers
         cp library/*.so target/$dir #libs
         cd target
