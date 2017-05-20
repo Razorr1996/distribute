@@ -12,6 +12,9 @@
 #include <errno.h>
 #include <wait.h>
 #include <unistd.h>
+#include <pa1_starter_code/ipc.h>
+#include <pa2345_starter_code/banking.h>
+#include <functions.h>
 
 #include "common.h"
 #include "ipc.h"
@@ -19,6 +22,40 @@
 #include "banking.h"
 
 #include "functions.h"
+
+extern void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
+    Message msg;
+    memset(&msg, 0, sizeMessage);
+
+    msg.s_header.s_type = TRANSFER;
+    msg.s_header.s_magic = MESSAGE_MAGIC;
+    msg.s_header.s_local_time = get_physical_time();
+
+    TransferOrder order;
+    order.s_src = src;
+    order.s_dst = dst;
+    order.s_amount = amount;
+    msg.s_header.s_payload_len = sizeof(order);
+    memcpy(msg.s_payload, &order, msg.s_header.s_payload_len);
+
+    int res = send(parent_data, src, &msg);
+    if (res != EXIT_SUCCESS) exitWithError(((LocalInfo *) parent_data)->logFd, errno);
+
+    res = receive(parent_data, dst, &msg);
+    if (res != EXIT_SUCCESS) exitWithError(((LocalInfo *) parent_data)->logFd, errno);
+}
+
+int updateBalance(BalanceHistory history, TransferOrder order) {
+    timestamp_t nowTime = get_physical_time();
+    if (nowTime > 0)
+        for (timestamp_t time = history.s_history_len; time <= nowTime; time++) {
+            history.s_history[time] = history.s_history[time - 1];
+            history.s_history[time].s_time++;
+        }
+    history.s_history[nowTime].s_balance += (order.s_dst == history.s_id ? 1 : -1) * order.s_amount;
+    history.s_history_len = (uint8_t) (nowTime + 1);
+    return EXIT_SUCCESS;
+}
 
 int main(int argc, char *argv[]) {
     LocalInfo *info = malloc(sizeof(LocalInfo));
@@ -55,6 +92,7 @@ int main(int argc, char *argv[]) {
 
     closeUnnecessaryPipes(info);
 
+    //TODO Clear it
     if (info->localID != PARENT_ID) {
         Message myMsg;
         memset(&myMsg, 0, sizeMessage);
@@ -70,11 +108,13 @@ int main(int argc, char *argv[]) {
     }
 
     receiveAll(info);
-    logToFile(info->eventFd, log_received_all_started_fmt, 0, info->localID);
+
+    //TODO Clear it
+    logToFile(info->eventFd, log_received_all_started_fmt, get_physical_time(), info->localID);
     if (info->localID != PARENT_ID) {
         Message myMsg;
         memset(&myMsg, 0, sizeMessage);
-        snprintf(myMsg.s_payload, MAX_PAYLOAD_LEN, log_done_fmt, 0, info->localID, 0);
+        snprintf(myMsg.s_payload, MAX_PAYLOAD_LEN, log_done_fmt, get_physical_time(), info->localID, 0);
         myMsg.s_header.s_magic = MESSAGE_MAGIC;
         myMsg.s_header.s_payload_len = (uint16_t) strlen(myMsg.s_payload);
         myMsg.s_header.s_type = DONE;
@@ -85,7 +125,7 @@ int main(int argc, char *argv[]) {
         send_multicast(info, &myMsg);
     }
     receiveAll(info);
-    logToFile(info->eventFd, log_received_all_done_fmt, 0, info->localID);
+    logToFile(info->eventFd, log_received_all_done_fmt, get_physical_time(), info->localID);
     closeUsedPipes(info);
     if (info->localID == PARENT_ID) {
         for (int j = 0; j < info->nChild; ++j) {

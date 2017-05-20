@@ -33,6 +33,8 @@ int exitWithError(int fd, int status) {
 
 int send(void *self, local_id dst, const Message *msg) {
     LocalInfo *info = self;
+    if (dst == info->localID)
+        return EXIT_SUCCESS;
     size_t n = sizeof(msg->s_header) + msg->s_header.s_payload_len;
     ssize_t res = write(info->pDes[info->localID][dst].writePipe, msg, n);
     if (res != n) return EXIT_FAILURE;
@@ -55,46 +57,41 @@ int send_multicast(void *self, const Message *msg) {
 
 int receive(void *self, local_id from, Message *msg) {
     LocalInfo *info = self;
-    ssize_t res = 0;
-    size_t c1 = sizeHeader;
-    do {
+    if (from == info->localID)
+        return EXIT_SUCCESS;
+    while (1) {
+        ssize_t res = read(info->pDes[from][info->localID].readPipe, msg, sizeHeader);
         if (res > 0) {
-            c1 -= res;
-        } else usleep(10000);
-        res = read(info->pDes[from][info->localID].readPipe, msg, c1);
-        if (res == -1 && errno != EAGAIN) {
-            exitWithError(info->eventFd, errno);
+            while (1) {
+                res = read(info->pDes[from][info->localID].readPipe, msg, msg->s_header.s_payload_len);
+                if (res > 0) return EXIT_SUCCESS;
+            }
         }
-    } while (c1 > 0);
-    c1 = msg->s_header.s_payload_len;
-    do {
-        if (res > 0) {
-            c1 -= res;
-        } else usleep(10000);
-        res = read(info->pDes[from][info->localID].readPipe, &msg->s_payload, c1);
-        if (res == -1) exitWithError(info->eventFd, errno);
-    } while (c1 > 0);
+        usleep(10000);
+    }
     return EXIT_SUCCESS;
 }
 
-/*int receive_any(void *self, Message *msg) {//TODO To receive
+int receive_any(void *self, Message *msg) {
     LocalInfo *info = self;
-    ssize_t res, res1;
-    int count = 1;
-    int arrTmp[info->nChild + 1];
-    memset(arrTmp, 0, sizeof(arrTmp));
-    arrTmp[0] = 1;
-    for (int from = 1; count > 0; from = (from + 1) % info->nChild + 1) {
-        if (arrTmp[from]) {
-            count--;
+    while (1) {
+        for (int from = 0;; from = (from + 1) % (info->nChild + 1)) {
+            if (from == info->localID) continue;
+            ssize_t res = read(info->pDes[from][info->localID].readPipe, msg, sizeHeader);
+            if (res > 0) {
+                while (1) {
+                    res = read(info->pDes[from][info->localID].readPipe, msg, msg->s_header.s_payload_len);
+                    if (res > 0) return EXIT_SUCCESS;
+                }
+            }
         }
+        usleep(10000);
     }
     return EXIT_SUCCESS;
-}*/
+}
 
 int receiveAll(LocalInfo *info) {
     Message inMsg;
-    memset(&inMsg, 0, sizeMessage);
     for (int i = 1; i <= info->nChild; i++) {
         if (i != info->localID) {
             receive(info, i, &inMsg);
@@ -109,11 +106,10 @@ int openPipes(LocalInfo *info) {
     for (int i = 0; i <= info->nChild; ++i) {
         for (int j = 0; j <= info->nChild; ++j) {
             if (i != j) {
-                if (pipe(fDes)) {
+                if (pipe2(fDes, O_NONBLOCK)) {
                     fprintf(stderr, "Cannot open pipe.\n");
                     exit(EXIT_FAILURE);
                 } else {
-                    fcntl(fDes[0], F_SETFL, fcntl(fDes[1], F_GETFL) | O_NONBLOCK);
                     info->pDes[i][j].readPipe = fDes[0];
                     info->pDes[i][j].writePipe = fDes[1];
                 }
@@ -128,21 +124,13 @@ int closeUnnecessaryPipes(LocalInfo *info) {
     for (int i = 0; i <= info->nChild; ++i) {
         for (int j = 0; j <= info->nChild; ++j) {
             if (i == j) continue;
-            if (i == info->localID) {
-                close(info->pDes[i][j].readPipe);
-                info->pDes[i][j].readPipe = -1;
-                continue;
+            if (i != info->localID) {
+                close(info->pDes[i][j].writePipe);
+                info->pDes[i][j].writePipe = -1;
             }
-            if (j == info->localID) {
-                close(info->pDes[i][j].writePipe);
-                info->pDes[i][j].writePipe = -1;
-                continue;
-            } else {
+            if (j != info->localID) {
                 close(info->pDes[i][j].readPipe);
-                close(info->pDes[i][j].writePipe);
                 info->pDes[i][j].readPipe = -1;
-                info->pDes[i][j].writePipe = -1;
-                continue;
             }
         }
     }
