@@ -11,7 +11,7 @@ include_directories(headers/pa2345_starter_code)
 link_directories(library)
 link_libraries(runtime)
 
-set(SOURCE_FUNCTIONS src/functions.c)
+set(SOURCE_FUNCTIONS src/functions.c src/bank_robbery.c)
 
 foreach (LV 1 2)
     set(SOURCE_FILES${LV} ${SOURCE_FUNCTIONS} src/${LV}lab.c)

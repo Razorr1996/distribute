@@ -35,9 +35,11 @@ int send(void *self, local_id dst, const Message *msg) {
     LocalInfo *info = self;
     if (dst == info->localID)
         return EXIT_SUCCESS;
-    size_t n = sizeof(msg->s_header) + msg->s_header.s_payload_len;
+    size_t n = sizeHeader + msg->s_header.s_payload_len;
     ssize_t res = write(info->pDes[info->localID][dst].writePipe, msg, n);
-    if (res != n) return EXIT_FAILURE;
+    if (res != n && errno != EAGAIN) {
+        exitWithError(info->eventFd, errno);
+    }
     return EXIT_SUCCESS;
 }
 
@@ -63,11 +65,10 @@ int receive(void *self, local_id from, Message *msg) {
         ssize_t res = read(info->pDes[from][info->localID].readPipe, msg, sizeHeader);
         if (res > 0) {
             while (1) {
-                res = read(info->pDes[from][info->localID].readPipe, msg, msg->s_header.s_payload_len);
-                if (res > 0) return EXIT_SUCCESS;
+                res = read(info->pDes[from][info->localID].readPipe, msg->s_payload, msg->s_header.s_payload_len);
+                if (res >= 0) return EXIT_SUCCESS;
             }
-        }
-        usleep(10000);
+        } else usleep(10000);
     }
     return EXIT_SUCCESS;
 }
@@ -75,13 +76,13 @@ int receive(void *self, local_id from, Message *msg) {
 int receive_any(void *self, Message *msg) {
     LocalInfo *info = self;
     while (1) {
-        for (int from = 0;; from = (from + 1) % (info->nChild + 1)) {
+        for (int from = 0; from <= info->nChild; from++) {
             if (from == info->localID) continue;
             ssize_t res = read(info->pDes[from][info->localID].readPipe, msg, sizeHeader);
             if (res > 0) {
                 while (1) {
-                    res = read(info->pDes[from][info->localID].readPipe, msg, msg->s_header.s_payload_len);
-                    if (res > 0) return EXIT_SUCCESS;
+                    res = read(info->pDes[from][info->localID].readPipe, msg->s_payload, msg->s_header.s_payload_len);
+                    if (res >= 0) return EXIT_SUCCESS;
                 }
             }
         }

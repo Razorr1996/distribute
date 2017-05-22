@@ -12,9 +12,6 @@
 #include <errno.h>
 #include <wait.h>
 #include <unistd.h>
-#include <pa1_starter_code/ipc.h>
-#include <pa2345_starter_code/banking.h>
-#include <functions.h>
 
 #include "common.h"
 #include "ipc.h"
@@ -23,7 +20,7 @@
 
 #include "functions.h"
 
-extern void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
+void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
     Message msg;
     memset(&msg, 0, sizeMessage);
 
@@ -45,15 +42,160 @@ extern void transfer(void *parent_data, local_id src, local_id dst, balance_t am
     if (res != EXIT_SUCCESS) exitWithError(((LocalInfo *) parent_data)->logFd, errno);
 }
 
-int updateBalance(BalanceHistory history, TransferOrder order) {
+int updateBalance(BalanceHistory *history, TransferOrder *order) {
     timestamp_t nowTime = get_physical_time();
+    if (nowTime == 0) memset(&history->s_history[0], 0, sizeof(history->s_history[0]));
+    history->s_history[history->s_history_len].s_balance_pending_in = 0;
     if (nowTime > 0)
-        for (timestamp_t time = history.s_history_len; time <= nowTime; time++) {
-            history.s_history[time] = history.s_history[time - 1];
-            history.s_history[time].s_time++;
+        for (timestamp_t time = history->s_history_len; time <= nowTime; time++) {
+            history->s_history[time] = history->s_history[time - 1];
+            history->s_history[time].s_time++;
         }
-    history.s_history[nowTime].s_balance += (order.s_dst == history.s_id ? 1 : -1) * order.s_amount;
-    history.s_history_len = (uint8_t) (nowTime + 1);
+    history->s_history[nowTime].s_balance += (order->s_dst == history->s_id ? 1 : -1) * order->s_amount;
+    history->s_history_len = (uint8_t) (nowTime + 1);
+    return EXIT_SUCCESS;
+}
+
+void childStartedMsg(LocalInfo *info, Message *myMsg, BalanceHistory *data) {
+    memset(myMsg, 0, sizeMessage);
+    BalanceState state = data[info->localID].s_history[get_physical_time()];
+    myMsg->s_header.s_magic = MESSAGE_MAGIC;
+    myMsg->s_header.s_type = STARTED;
+    myMsg->s_header.s_local_time = 0L;
+    snprintf(myMsg->s_payload, MAX_PAYLOAD_LEN, log_started_fmt, get_physical_time(), info->localID, info->pid,
+             info->pPid, state.s_balance);
+    myMsg->s_header.s_payload_len = (uint16_t) strlen(myMsg->s_payload);
+}
+
+int childLoop(LocalInfo *info, BalanceHistory *data) {
+    Message msg;
+    TransferOrder order;
+    BalanceHistory *balance = &data[info->localID];
+    int res;
+    memset(&msg, 0, sizeof msg);
+    memset(&order, 0, sizeof order);
+    while (1) {
+        res = receive_any(info, &msg);
+        if (res != EXIT_SUCCESS) return res;
+
+        switch (msg.s_header.s_type) {
+            case TRANSFER: {
+                memcpy(&order, msg.s_payload, msg.s_header.s_payload_len);
+                updateBalance(balance, &order);
+                if (order.s_src == info->localID) {
+                    logToFile(info->eventFd, log_transfer_out_fmt, get_physical_time(), info->localID,
+                              order.s_amount, order.s_dst);
+                    res = send(info, order.s_dst, &msg);
+                    if (res != EXIT_SUCCESS) return res;
+                } else {
+                    msg.s_header.s_type = ACK;
+                    msg.s_header.s_payload_len = 0;
+                    msg.s_header.s_local_time = get_physical_time();
+                    logToFile(info->eventFd, log_transfer_in_fmt, get_physical_time(), info->localID,
+                              order.s_amount, order.s_src);
+                    res = send(info, PARENT_ID, &msg);
+                    if (res != EXIT_SUCCESS) return res;
+                }
+                break;
+            }
+            case STOP: {
+                order.s_dst = 0;
+                order.s_src = info->localID;
+                order.s_amount = 0;
+                updateBalance(balance, &order);
+                return EXIT_SUCCESS;
+            }
+            default:
+                return EXIT_FAILURE;
+        }
+    }
+    return EXIT_SUCCESS;
+}
+
+int child(LocalInfo *info, BalanceHistory *data) {
+    Message msg;
+
+    closeUnnecessaryPipes(info);
+
+    {
+        childStartedMsg(info, &msg, data);
+        logToFile(info->eventFd, msg.s_payload);
+        send_multicast(info, &msg);
+    }
+    receiveAll(info);
+
+    logToFile(info->eventFd, log_received_all_started_fmt, get_physical_time(), info->localID);
+    childLoop(info, data);
+    {
+        memset(&msg, 0, sizeMessage);
+        snprintf(msg.s_payload, MAX_PAYLOAD_LEN, log_done_fmt, get_physical_time(),
+                 info->localID,
+                 data[info->localID].s_history[get_physical_time()].s_balance);
+        msg.s_header.s_magic = MESSAGE_MAGIC;
+        msg.s_header.s_payload_len = (uint16_t) strlen(msg.s_payload);
+        msg.s_header.s_type = DONE;
+        msg.s_header.s_local_time = 0L;
+
+        logToFile(info->eventFd, msg.s_payload);
+
+        send_multicast(info, &msg);
+    }
+    receiveAll(info);
+    logToFile(info->eventFd, log_received_all_done_fmt, get_physical_time(), info->localID);
+    BalanceHistory *balance = &data[info->localID];
+    msg.s_header.s_magic = MESSAGE_MAGIC;
+    msg.s_header.s_type = BALANCE_HISTORY;
+    msg.s_header.s_local_time = get_physical_time();
+    msg.s_header.s_payload_len = sizeof(BalanceHistory) - sizeof(balance->s_history) +
+                                 balance->s_history_len * sizeof(BalanceState);
+    memcpy(msg.s_payload, balance, msg.s_header.s_payload_len);
+    send(info, PARENT_ID, &msg);
+    closeUsedPipes(info);
+    close(info->eventFd);
+    return EXIT_SUCCESS;
+}
+
+int parent(LocalInfo *info) {
+    Message msg;
+    closeUnnecessaryPipes(info);
+
+    receiveAll(info);
+
+    logToFile(info->eventFd, log_received_all_started_fmt, get_physical_time(), info->localID);
+    //Parent work
+    bank_robbery(info, info->nChild);
+    msg.s_header.s_magic = MESSAGE_MAGIC;
+    msg.s_header.s_type = STOP;
+    msg.s_header.s_local_time = get_physical_time();
+    send_multicast(info, &msg);
+
+    logToFile(info->eventFd, "0\n");
+    receiveAll(info);
+    logToFile(info->eventFd, "1\n");
+
+    AllHistory all;
+    all.s_history_len = (uint8_t) info->nChild;
+    logToFile(info->eventFd, "2.0\n");
+    for (local_id i = 1; i <= info->nChild; ++i) {
+        logToFile(info->eventFd, "3.0\n");
+        if (receive(info, i, &msg) != EXIT_SUCCESS) return EXIT_FAILURE;
+        logToFile(info->eventFd, "3.1\n");
+        memcpy(&all.s_history[i - 1], msg.s_payload, msg.s_header.s_payload_len);
+        logToFile(info->eventFd, "3.2\n");
+    }
+    logToFile(info->eventFd, "4.0\n");
+    print_history(&all);
+    logToFile(info->eventFd, "5.0\n");
+    //End Parent work
+    closeUsedPipes(info);
+    logToFile(info->eventFd, "6.0\n");
+    for (int j = 0; j < info->nChild; ++j) {
+        logToFile(info->eventFd, "7.0\n");
+        wait(NULL);
+        logToFile(info->eventFd, "7.1\n");
+    }
+    logToFile(info->eventFd, "All children end\n");
+    close(info->eventFd);
     return EXIT_SUCCESS;
 }
 
@@ -88,52 +230,24 @@ int main(int argc, char *argv[]) {
 
     if (openPipes(info) != EXIT_SUCCESS) exitWithError(info->eventFd, errno);
 
+    BalanceHistory balances[info->nChild + 1];
+    TransferOrder order;
+    memset(&order, 0, sizeof(TransferOrder));
+    for (int i = 1; i < info->nChild + 1; i++) {
+        balances[i].s_id = i;
+        order.s_dst = i;
+        order.s_amount = atoi(argv[optind + i - 1]);
+        printf("%d:%d\n", i, order.s_amount);
+        balances[i].s_history_len = 0;
+        updateBalance(&balances[i], &order);
+    }
+
     preFork(info);
 
-    closeUnnecessaryPipes(info);
-
-    //TODO Clear it
     if (info->localID != PARENT_ID) {
-        Message myMsg;
-        memset(&myMsg, 0, sizeMessage);
-        snprintf(myMsg.s_payload, MAX_PAYLOAD_LEN, log_started_fmt, 0, info->localID, info->pid, info->pPid, 0);
-        myMsg.s_header.s_magic = MESSAGE_MAGIC;
-        myMsg.s_header.s_payload_len = (uint16_t) strlen(myMsg.s_payload);
-        myMsg.s_header.s_type = STARTED;
-        myMsg.s_header.s_local_time = 0L;
-
-        logToFile(info->eventFd, myMsg.s_payload);
-
-        send_multicast(info, &myMsg);
+        child(info, balances);
+    } else {
+        parent(info);
     }
-
-    receiveAll(info);
-
-    //TODO Clear it
-    logToFile(info->eventFd, log_received_all_started_fmt, get_physical_time(), info->localID);
-    if (info->localID != PARENT_ID) {
-        Message myMsg;
-        memset(&myMsg, 0, sizeMessage);
-        snprintf(myMsg.s_payload, MAX_PAYLOAD_LEN, log_done_fmt, get_physical_time(), info->localID, 0);
-        myMsg.s_header.s_magic = MESSAGE_MAGIC;
-        myMsg.s_header.s_payload_len = (uint16_t) strlen(myMsg.s_payload);
-        myMsg.s_header.s_type = DONE;
-        myMsg.s_header.s_local_time = 0L;
-
-        logToFile(info->eventFd, myMsg.s_payload);
-
-        send_multicast(info, &myMsg);
-    }
-    receiveAll(info);
-    logToFile(info->eventFd, log_received_all_done_fmt, get_physical_time(), info->localID);
-    closeUsedPipes(info);
-    if (info->localID == PARENT_ID) {
-        for (int j = 0; j < info->nChild; ++j) {
-            wait(NULL);
-        }
-        logToFile(info->eventFd, "All children end\n");
-    }
-    //
-    close(info->eventFd);
     return EXIT_SUCCESS;
 }
