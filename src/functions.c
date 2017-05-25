@@ -13,6 +13,21 @@
 #include <unistd.h>
 
 #include "functions.h"
+#include "banking.h"
+
+timestamp_t localTime = 0;
+
+timestamp_t get_lamport_time() {
+    return localTime;
+}
+
+void set_lamport_time(timestamp_t newTime) {
+    localTime = newTime > localTime ? newTime : localTime;
+}
+
+void increment_lamport_time() {
+    localTime++;
+}
 
 int logToFile(int fd, const char *format, ...) {
     va_list args;
@@ -98,6 +113,10 @@ int receiveAll(LocalInfo *info) {
             receive(info, i, &inMsg);
             logToFile(info->eventFd, "Msg(%2d->%2d):\t%s", i, info->localID, inMsg.s_payload);
         }
+        if (info->lab >= 3) {
+            set_lamport_time(inMsg.s_header.s_local_time);
+            increment_lamport_time();
+        }
     }
     return EXIT_SUCCESS;
 }
@@ -166,4 +185,12 @@ int preFork(LocalInfo *info) {
         }
     }
     return EXIT_SUCCESS;
+}
+
+void setMessage(Message *msg, MessageType type, uint16_t length) {
+    memset(msg, 0, sizeMessage);
+    msg->s_header.s_magic = MESSAGE_MAGIC;
+    msg->s_header.s_type = type;
+    msg->s_header.s_local_time = get_lamport_time();
+    msg->s_header.s_payload_len = length;
 }

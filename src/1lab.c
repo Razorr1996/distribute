@@ -17,6 +17,7 @@
 
 int main(int argc, char *argv[]) {
     LocalInfo *info = malloc(sizeof(LocalInfo));
+    info->lab = 1;
     info->localID = 0;
     info->nChild = 8;
     info->pid = getpid();

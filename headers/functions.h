@@ -18,11 +18,15 @@ typedef struct {
 
 typedef struct {
     local_id localID;
-    int nChild, eventFd, logFd;
+    int nChild, eventFd, logFd, lab;
     pid_t pid;
     pid_t pPid;
     PipeDes pDes[MAX_PROCESS_ID + 1][MAX_PROCESS_ID + 1];
 } __attribute__((packed)) LocalInfo;
+
+void set_lamport_time(timestamp_t newTime);
+
+void increment_lamport_time();
 
 int logToFile(int fd, const char *format, ...);
 
@@ -37,5 +41,7 @@ int closeUnnecessaryPipes(LocalInfo *info);
 int closeUsedPipes(LocalInfo *info);
 
 int preFork(LocalInfo *info);
+
+void setMessage(Message *msg, MessageType type, uint16_t length);
 
 #endif //INC_DISTRIBUTED_LAB_BASA62_FUNCTIONS_H
