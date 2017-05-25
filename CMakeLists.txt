@@ -11,10 +11,14 @@ include_directories(headers/pa2345_starter_code)
 link_directories(library)
 link_libraries(runtime)
 
-set(SOURCE_FUNCTIONS src/functions.c src/bank_robbery.c)
+set(SOURCE_FUNCTIONS src/functions.c)
+
+foreach (LV 2 3)
+    set(SOURCE_FILES${LV} src/bank_robbery.c)
+endforeach (LV)
 
 foreach (LV 1 2 3)
-    set(SOURCE_FILES${LV} ${SOURCE_FUNCTIONS} src/${LV}lab.c)
+    set(SOURCE_FILES${LV} ${SOURCE_FILES${LV}} ${SOURCE_FUNCTIONS} src/${LV}lab.c)
     add_executable(${LV}lab ${SOURCE_FILES${LV}})
 endforeach (LV)
 
