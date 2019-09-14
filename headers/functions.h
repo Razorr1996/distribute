@@ -11,14 +11,18 @@
 static const size_t sizeHeader = sizeof(MessageHeader);
 static const size_t sizeMessage = sizeof(Message);
 
+enum {
+    MAX_LOOP = 5
+};
+
 typedef struct {
     int readPipe;
     int writePipe;
 }__attribute__((packed)) PipeDes;
 
 typedef struct {
-    local_id localID;
-    int nChild, eventFd, logFd, lab;
+    local_id localID, lastMsgPid;
+    int nChild, eventFd, logFd, lab, mutexEnabled, doneChildren;
     pid_t pid;
     pid_t pPid;
     PipeDes pDes[MAX_PROCESS_ID + 1][MAX_PROCESS_ID + 1];
