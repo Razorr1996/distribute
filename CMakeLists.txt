@@ -21,7 +21,7 @@ foreach (LV 4)
     set(SOURCE_FILES${LV} src/queue.c)
 endforeach (LV)
 
-foreach (LV 1 2 3 4)
+foreach (LV 1 2 3 4 5)
     set(SOURCE_FILES${LV} ${SOURCE_FILES${LV}} ${SOURCE_FUNCTIONS} src/${LV}lab.c)
     add_executable(${LV}lab ${SOURCE_FILES${LV}})
 endforeach (LV)

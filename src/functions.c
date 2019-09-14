@@ -95,10 +95,10 @@ int receive_any(void *self, Message *msg) {
             if (from == info->localID) continue;
             ssize_t res = read(info->pDes[from][info->localID].readPipe, msg, sizeHeader);
             if (res > 0) {
+                info->lastMsgPid = from;
                 while (1) {
                     res = read(info->pDes[from][info->localID].readPipe, msg->s_payload, msg->s_header.s_payload_len);
                     if (res >= 0) {
-                        info->lastMsgPid = from;
                         return EXIT_SUCCESS;
                     }
                 }
