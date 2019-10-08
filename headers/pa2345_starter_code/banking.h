@@ -100,4 +100,9 @@ timestamp_t get_physical_time();
  */
 void print_history(const AllHistory *history);
 
+/** Returns vector time.
+ *
+ */
+timestamp_t get_vector_time();
+
 #endif // __IFMO_DISTRIBUTED_CLASS_BANKING__H

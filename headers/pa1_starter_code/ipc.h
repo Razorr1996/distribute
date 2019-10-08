@@ -34,7 +34,12 @@ typedef enum {
     BALANCE_HISTORY, ///< message with BalanceHistory
     CS_REQUEST,      ///< empty message
     CS_REPLY,        ///< empty message
-    CS_RELEASE       ///< empty message
+    CS_RELEASE,       ///< empty message
+    BALANCE_STATE,      /* message with BalanceState structure
+                        or only send its balance */
+    SNAPSHOT_VTIME,   // message with future time of snapshot
+    SNAPSHOT_ACK,     // empty message
+    EMPTY               // yep, it also empty
 } MessageType;
 
 typedef struct {
@@ -44,6 +49,7 @@ typedef struct {
     timestamp_t s_local_time;   ///< set by sender, depends on particular PA:
     ///< physical time in PA2 or Lamport's scalar
     ///< time in PA3
+    timestamp_t s_local_timevector[MAX_PROCESS_ID]; // time for vector clock
 } __attribute__((packed)) MessageHeader;
 
 enum {
