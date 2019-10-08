@@ -36,7 +36,6 @@ int request_cs(const void *self) {
     int request_time = get_lamport_time();
 
     while (repliesCount > 0) {
-        logToFile(info->eventFd, "1");
         res = receive_any(info, &msg);
         if (res != EXIT_SUCCESS) return res;
 
@@ -138,7 +137,7 @@ int child(LocalInfo *info) {
     }
 //    receiveAll(info);
     int res = 0;
-    logToFile(info->eventFd, "Child %d, done %d", info->localID, info->doneChildren);
+    logToFile(info->eventFd, "Child %d, done %d\n", info->localID, info->doneChildren);
     while (info->doneChildren < info->nChild - 1) {
         res = receive_any(info, &msg);
         if (res != EXIT_SUCCESS) return res;
