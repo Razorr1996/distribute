@@ -15,19 +15,19 @@
 #include "functions_vt.h"
 #include "banking.h"
 
-timestamp_t localTime = 0;
-
-timestamp_t get_lamport_time() {
-    return localTime;
-}
-
-void set_lamport_time(timestamp_t newTime) {
-    localTime = newTime > localTime ? newTime : localTime;
-}
-
-void increment_lamport_time() {
-    localTime++;
-}
+//timestamp_t localTime = 0;
+//
+//timestamp_t get_lamport_time() {
+//    return localTime;
+//}
+//
+//void set_lamport_time(timestamp_t newTime) {
+//    localTime = newTime > localTime ? newTime : localTime;
+//}
+//
+//void increment_lamport_time() {
+//    localTime++;
+//}
 
 int logToFile(int fd, const char *format, ...) {
     va_list args;

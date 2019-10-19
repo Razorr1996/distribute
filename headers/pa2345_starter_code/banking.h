@@ -33,6 +33,8 @@ typedef struct {
     balance_t s_balance_pending_in; ///< $$$ sent at t <= s_time, but
     ///< received at t > s_time. PA3 only,
     ///< in other labs must be 0
+    /*unused in vector-time*/
+    timestamp_t s_timevector[MAX_PROCESS_ID]; //time for vector clock
 } __attribute__((packed)) BalanceState;
 
 enum {

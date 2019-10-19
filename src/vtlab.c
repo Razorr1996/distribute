@@ -18,7 +18,7 @@
 #include "pa2345.h"
 #include "banking.h"
 
-#include "functions.h"
+#include "functions_vt.h"
 
 void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
     increment_lamport_time();

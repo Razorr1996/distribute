@@ -28,10 +28,6 @@ typedef struct {
     PipeDes pDes[MAX_PROCESS_ID + 1][MAX_PROCESS_ID + 1];
 } __attribute__((packed)) LocalInfo;
 
-void set_lamport_time(timestamp_t newTime);
-
-void increment_lamport_time();
-
 int logToFile(int fd, const char *format, ...);
 
 int exitWithError(int fd, int status);
