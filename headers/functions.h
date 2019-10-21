@@ -5,6 +5,7 @@
 #ifndef INC_DISTRIBUTED_LAB_BASA62_FUNCTIONS_H
 #define INC_DISTRIBUTED_LAB_BASA62_FUNCTIONS_H 1
 
+#include <sys/types.h>
 #include <unistd.h>
 #include "ipc.h"
 

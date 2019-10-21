@@ -13,6 +13,7 @@
 #include <wait.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <assert.h>
 
 #include "common.h"
 #include "ipc.h"
@@ -20,66 +21,89 @@
 #include "banking.h"
 
 #include "functions.h"
+#include "phil.h"
 
-int delay[MAX_PROCESS_ID];
+Phil *phil = NULL;
+
+int child_lap(LocalInfo *info) {
+    int res;
+    Message msg;
+    res = receive_any(info, &msg);
+    if (res != EXIT_SUCCESS) return res;
+
+    set_lamport_time(msg.s_header.s_local_time);
+    increment_lamport_time();
+    phil_print(info, phil);
+    switch (msg.s_header.s_type) {
+        case CS_REQUEST:
+            phil->reqf[info->lastMsgPid] = 1;
+            phil_print(info, phil);
+            assert(phil->fork[info->lastMsgPid]);
+            if (phil->fork[info->lastMsgPid] && phil->dirty[info->lastMsgPid]) {
+                phil->fork[info->lastMsgPid] = phil->dirty[info->lastMsgPid] = 0;
+                increment_lamport_time();
+                setMessage(&msg, CS_REPLY, 0);
+                res = send(info, info->lastMsgPid, &msg);
+                if (res != EXIT_SUCCESS) return res;
+            }
+            break;
+        case CS_REPLY:
+            phil->fork[info->lastMsgPid] = 1;
+            phil->dirty[info->lastMsgPid] = 0;
+            break;
+        case DONE:
+            info->doneChildren++;
+            break;
+    }
+    phil_print(info, phil);
+    return EXIT_SUCCESS;
+}
 
 int request_cs(const void *self) {
     LocalInfo *info = (LocalInfo *) self;
+    int res = 0;
     Message msg;
-    increment_lamport_time();
-    setMessage(&msg, CS_REQUEST, 0);
-    int res = send_multicast(info, &msg);
-    if (res != EXIT_SUCCESS) return res;
 
-    int repliesCount = info->nChild - 1;
+    if (phil == NULL) phil_init(info, &phil);
+    phil_print(info, phil);
 
-    int request_time = get_lamport_time();
-
-    while (repliesCount > 0) {
-        res = receive_any(info, &msg);
-        if (res != EXIT_SUCCESS) return res;
-
-        set_lamport_time(msg.s_header.s_local_time);
-        increment_lamport_time();
-        switch (msg.s_header.s_type) {
-            case CS_REQUEST:
-                if (msg.s_header.s_local_time < request_time ||
-                    (msg.s_header.s_local_time == request_time && info->lastMsgPid < info->localID)) {
-                    increment_lamport_time();
-                    setMessage(&msg, CS_REPLY, 0);
-                    res = send(info, info->lastMsgPid, &msg);
-                    if (res != EXIT_SUCCESS) return res;
-                } else delay[info->lastMsgPid] = 1;
-                break;
-            case CS_REPLY:
-                repliesCount--;
-                break;
-            case DONE:
-                info->doneChildren++;
-                break;
+    while (phil_check_forks(info, phil) != EXIT_SUCCESS) {
+        phil_print(info, phil);
+        for (int i = 1; i <= info->nChild; ++i) {
+            if (i == info->localID) continue;
+            if (!phil->fork[i] && phil->reqf[i]) {
+                phil->reqf[i] = 0;
+                increment_lamport_time();
+                setMessage(&msg, CS_REQUEST, 0);
+                res = send(info, i, &msg);
+                if (res != EXIT_SUCCESS) return res;
+            }
         }
+        res = child_lap(info);
+        if (res != EXIT_SUCCESS) return res;
     }
-
     return EXIT_SUCCESS;
 }
 
 int release_cs(const void *self) {
     LocalInfo *info = (LocalInfo *) self;
-
+    int res;
     Message msg;
-    increment_lamport_time();
+    phil_print(info, phil);
+    phil_set_all_dirty(info, phil);
+    phil_print(info, phil);
 
-    setMessage(&msg, CS_REPLY, 0);
     for (int i = 1; i <= info->nChild; ++i) {
-        if (delay[i]) {
-            delay[i] = 0;
+        if (i == info->localID) continue;
+        if (phil->reqf[i] && phil->fork[i] && phil->dirty[i]) {
+            phil->fork[i] = phil->dirty[i] = 0;
             increment_lamport_time();
-            msg.s_header.s_local_time = get_lamport_time();
-
-            int res = send(info, i, &msg);
+            setMessage(&msg, CS_REPLY, 0);
+            res = send(info, i, &msg);
             if (res != EXIT_SUCCESS) return res;
         }
     }
+    phil_print(info, phil);
     return EXIT_SUCCESS;
 }
 
@@ -139,9 +163,9 @@ int child(LocalInfo *info) {
     int res = 0;
     logToFile(info->eventFd, "Child %d, done %d\n", info->localID, info->doneChildren);
     while (info->doneChildren < info->nChild - 1) {
-        res = receive_any(info, &msg);
+        phil_print(info, phil);
+        res = child_lap(info);
         if (res != EXIT_SUCCESS) return res;
-        if (msg.s_header.s_type == DONE) info->doneChildren++;
     }
     logToFile(info->eventFd, log_received_all_done_fmt, get_lamport_time(), info->localID);
 

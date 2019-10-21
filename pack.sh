@@ -13,6 +13,9 @@ case "$1" in
         if [ "$1" = "4" ]; then
             cp src/queue.c target/$dir
         fi
+        if [ "$1" = "5" ]; then
+            cp src/phil.c target/$dir
+        fi
         cp headers/*.h headers/*/*.h target/$dir #headers
         cp library/*.so target/$dir #libs
         cd target
