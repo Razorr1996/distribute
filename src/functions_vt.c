@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <memory.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include "functions_vt.h"
 #include "banking.h"
@@ -79,6 +80,7 @@ int receive(void *self, local_id from, Message *msg) {
     while (1) {
         ssize_t res = read(info->pDes[from][info->localID].readPipe, msg, sizeHeader);
         if (res > 0) {
+            assert(msg->s_header.s_magic == MESSAGE_MAGIC);
             while (1) {
                 res = read(info->pDes[from][info->localID].readPipe, msg->s_payload, msg->s_header.s_payload_len);
                 if (res >= 0) return EXIT_SUCCESS;
@@ -96,6 +98,7 @@ int receive_any(void *self, Message *msg) {
             ssize_t res = read(info->pDes[from][info->localID].readPipe, msg, sizeHeader);
             if (res > 0) {
                 info->lastMsgPid = from;
+                assert(msg->s_header.s_magic == MESSAGE_MAGIC);
                 while (1) {
                     res = read(info->pDes[from][info->localID].readPipe, msg->s_payload, msg->s_header.s_payload_len);
                     if (res >= 0) {
