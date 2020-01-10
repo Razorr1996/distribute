@@ -20,14 +20,18 @@
 
 #include "functions_vt.h"
 
+void total_sum_snapshot() {
+
+}
+
 void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
-    increment_lamport_time();
+    increment_vector_time();
     Message msg;
     memset(&msg, 0, sizeMessage);
 
     msg.s_header.s_type = TRANSFER;
     msg.s_header.s_magic = MESSAGE_MAGIC;
-    msg.s_header.s_local_time = get_lamport_time();
+    msg.s_header.s_local_time = get_vector_time();
 
     TransferOrder order;
     order.s_src = src;
@@ -44,7 +48,7 @@ void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
 }
 
 int updateBalance(BalanceHistory *history, TransferOrder *order, timestamp_t sendTime) {
-    timestamp_t nowTime = get_lamport_time();
+    timestamp_t nowTime = get_vector_time();
     if (nowTime == 0) memset(&history->s_history[0], 0, sizeof(history->s_history[0]));
     history->s_history[history->s_history_len].s_balance_pending_in = 0;
     if (nowTime > 0)
@@ -65,11 +69,11 @@ int updateBalance(BalanceHistory *history, TransferOrder *order, timestamp_t sen
 
 void childStartedMsg(LocalInfo *info, Message *myMsg, BalanceHistory *data) {
     memset(myMsg, 0, sizeMessage);
-    BalanceState state = data[info->localID].s_history[get_lamport_time()];
+    BalanceState state = data[info->localID].s_history[get_vector_time()];
     myMsg->s_header.s_magic = MESSAGE_MAGIC;
     myMsg->s_header.s_type = STARTED;
-    myMsg->s_header.s_local_time = get_lamport_time();
-    snprintf(myMsg->s_payload, MAX_PAYLOAD_LEN, log_started_fmt, get_lamport_time(), info->localID, info->pid,
+    myMsg->s_header.s_local_time = get_vector_time();
+    snprintf(myMsg->s_payload, MAX_PAYLOAD_LEN, log_started_fmt, get_vector_time(), info->localID, info->pid,
              info->pPid, state.s_balance);
     myMsg->s_header.s_payload_len = (uint16_t) strlen(myMsg->s_payload);
 }
@@ -84,24 +88,22 @@ int childLoop(LocalInfo *info, BalanceHistory *data) {
     while (1) {
         res = receive_any(info, &msg);
         if (res != EXIT_SUCCESS) return res;
-        set_lamport_time(msg.s_header.s_local_time);
-        increment_lamport_time();
         switch (msg.s_header.s_type) {
             case TRANSFER: {
                 memcpy(&order, msg.s_payload, msg.s_header.s_payload_len);
-                increment_lamport_time();
+                increment_vector_time();
                 updateBalance(balance, &order, msg.s_header.s_local_time);
                 if (order.s_src == info->localID) {
-                    msg.s_header.s_local_time = get_lamport_time();
-                    logToFile(info->eventFd, log_transfer_out_fmt, get_lamport_time(), info->localID,
+                    msg.s_header.s_local_time = get_vector_time();
+                    logToFile(info->eventFd, log_transfer_out_fmt, get_vector_time(), info->localID,
                               order.s_amount, order.s_dst);
                     res = send(info, order.s_dst, &msg);
                     if (res != EXIT_SUCCESS) return res;
                 } else {
                     msg.s_header.s_type = ACK;
                     msg.s_header.s_payload_len = 0;
-                    msg.s_header.s_local_time = get_lamport_time();
-                    logToFile(info->eventFd, log_transfer_in_fmt, get_lamport_time(), info->localID,
+                    msg.s_header.s_local_time = get_vector_time();
+                    logToFile(info->eventFd, log_transfer_in_fmt, get_vector_time(), info->localID,
                               order.s_amount, order.s_src);
                     res = send(info, PARENT_ID, &msg);
                     if (res != EXIT_SUCCESS) return res;
@@ -112,7 +114,7 @@ int childLoop(LocalInfo *info, BalanceHistory *data) {
                 order.s_dst = 0;
                 order.s_src = info->localID;
                 order.s_amount = 0;
-                updateBalance(balance, &order, get_lamport_time());
+                updateBalance(balance, &order, get_vector_time());
                 return EXIT_SUCCESS;
             }
             default:
@@ -125,7 +127,7 @@ int childLoop(LocalInfo *info, BalanceHistory *data) {
 int child(LocalInfo *info, BalanceHistory *data) {
     Message msg;
     closeUnnecessaryPipes(info);
-    increment_lamport_time();
+    increment_vector_time();
     {
         childStartedMsg(info, &msg, data);
         logToFile(info->eventFd, msg.s_payload);
@@ -133,41 +135,41 @@ int child(LocalInfo *info, BalanceHistory *data) {
     }
     receiveAll(info);
 
-    logToFile(info->eventFd, log_received_all_started_fmt, get_lamport_time(), info->localID);
+    logToFile(info->eventFd, log_received_all_started_fmt, get_vector_time(), info->localID);
     childLoop(info, data);
-    increment_lamport_time();
+    increment_vector_time();
     {
         memset(&msg, 0, sizeMessage);
-        snprintf(msg.s_payload, MAX_PAYLOAD_LEN, log_done_fmt, get_lamport_time(),
+        snprintf(msg.s_payload, MAX_PAYLOAD_LEN, log_done_fmt, get_vector_time(),
                  info->localID,
-                 data[info->localID].s_history[get_lamport_time()].s_balance);
+                 data[info->localID].s_history[get_vector_time()].s_balance);
         msg.s_header.s_magic = MESSAGE_MAGIC;
         msg.s_header.s_payload_len = (uint16_t) strlen(msg.s_payload);
         msg.s_header.s_type = DONE;
-        msg.s_header.s_local_time = get_lamport_time();
+        msg.s_header.s_local_time = get_vector_time();
 
         logToFile(info->eventFd, msg.s_payload);
 
         send_multicast(info, &msg);
     }
     receiveAll(info);
-    logToFile(info->eventFd, log_received_all_done_fmt, get_lamport_time(), info->localID);
-    increment_lamport_time();
+    logToFile(info->eventFd, log_received_all_done_fmt, get_vector_time(), info->localID);
+    increment_vector_time();
 
     BalanceHistory *balance = &data[info->localID];
     TransferOrder order;
     order.s_src = 0;
     order.s_dst = info->localID;
     order.s_amount = 0;
-    updateBalance(balance, &order, get_lamport_time());
+    updateBalance(balance, &order, get_vector_time());
 
-    msg.s_header.s_magic = MESSAGE_MAGIC;
-    msg.s_header.s_type = BALANCE_HISTORY;
-    msg.s_header.s_local_time = get_lamport_time();
-    msg.s_header.s_payload_len = sizeof(BalanceHistory) - sizeof(balance->s_history) +
-                                 balance->s_history_len * sizeof(BalanceState);
-    memcpy(msg.s_payload, balance, msg.s_header.s_payload_len);
-    send(info, PARENT_ID, &msg);
+//    msg.s_header.s_magic = MESSAGE_MAGIC;
+//    msg.s_header.s_type = BALANCE_HISTORY;
+//    msg.s_header.s_local_time = get_lamport_time();
+//    msg.s_header.s_payload_len = sizeof(BalanceHistory) - sizeof(balance->s_history) +
+//                                 balance->s_history_len * sizeof(BalanceState);
+//    memcpy(msg.s_payload, balance, msg.s_header.s_payload_len);
+//    send(info, PARENT_ID, &msg);
     closeUsedPipes(info);
     close(info->eventFd);
     return EXIT_SUCCESS;
@@ -179,33 +181,31 @@ int parent(LocalInfo *info) {
 
     receiveAll(info);
 
-    logToFile(info->eventFd, log_received_all_started_fmt, get_lamport_time(), info->localID);
+    logToFile(info->eventFd, log_received_all_started_fmt, get_vector_time(), info->localID);
     //Parent work
     bank_robbery(info, info->nChild);
-    increment_lamport_time();
+    increment_vector_time();
     msg.s_header.s_magic = MESSAGE_MAGIC;
     msg.s_header.s_type = STOP;
-    msg.s_header.s_local_time = get_lamport_time();
+    msg.s_header.s_local_time = get_vector_time();
     send_multicast(info, &msg);
 
     logToFile(info->eventFd, "0\n");
     receiveAll(info);
     logToFile(info->eventFd, "1\n");
 
-    AllHistory all;
-    all.s_history_len = (uint8_t) info->nChild;
-    logToFile(info->eventFd, "2.0\n");
-    for (local_id i = 1; i <= info->nChild; ++i) {
-        logToFile(info->eventFd, "3.0\n");
-        if (receive(info, i, &msg) != EXIT_SUCCESS) return EXIT_FAILURE;
-        set_lamport_time(msg.s_header.s_local_time);
-        increment_lamport_time();
-        logToFile(info->eventFd, "3.1\n");
-        memcpy(&all.s_history[i - 1], msg.s_payload, msg.s_header.s_payload_len);
-        logToFile(info->eventFd, "3.2\n");
-    }
-    logToFile(info->eventFd, "4.0\n");
-    print_history(&all);
+//    AllHistory all;
+//    all.s_history_len = (uint8_t) info->nChild;
+//    logToFile(info->eventFd, "2.0\n");
+//    for (local_id i = 1; i <= info->nChild; ++i) {
+//        logToFile(info->eventFd, "3.0\n");
+//        if (receive(info, i, &msg) != EXIT_SUCCESS) return EXIT_FAILURE;
+//        logToFile(info->eventFd, "3.1\n");
+//        memcpy(&all.s_history[i - 1], msg.s_payload, msg.s_header.s_payload_len);
+//        logToFile(info->eventFd, "3.2\n");
+//    }
+//    logToFile(info->eventFd, "4.0\n");
+//    print_history(&all);
     logToFile(info->eventFd, "5.0\n");
     //End Parent work
     closeUsedPipes(info);
@@ -222,6 +222,8 @@ int parent(LocalInfo *info) {
 
 int main(int argc, char *argv[]) {
     LocalInfo *info = malloc(sizeof(LocalInfo));
+    memset(info, 0, sizeof(LocalInfo));
+    pInfo = info;
     info->lab = 3;
     info->localID = 0;
     info->nChild = 8;

@@ -34,7 +34,7 @@ typedef struct {
     ///< received at t > s_time. PA3 only,
     ///< in other labs must be 0
     /*unused in vector-time*/
-    timestamp_t s_timevector[MAX_PROCESS_ID]; //time for vector clock
+    timestamp_t s_timevector[MAX_PROCESS_ID + 1]; //time for vector clock
 } __attribute__((packed)) BalanceState;
 
 enum {
@@ -106,5 +106,7 @@ void print_history(const AllHistory *history);
  *
  */
 timestamp_t get_vector_time();
+
+void total_sum_snapshot();
 
 #endif // __IFMO_DISTRIBUTED_CLASS_BANKING__H

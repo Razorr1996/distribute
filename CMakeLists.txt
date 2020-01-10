@@ -13,7 +13,7 @@ link_libraries(runtime)
 
 set(SOURCE_FUNCTIONS src/functions.c)
 
-foreach (LV 2 3 vt)
+foreach (LV 2 3)
     set(SOURCE_FILES${LV} src/bank_robbery.c)
 endforeach (LV)
 
@@ -31,7 +31,7 @@ foreach (LV 1 2 3 4 5)
 endforeach (LV)
 
 foreach (LV vt)
-    set(SOURCE_FILES${LV} ${SOURCE_FILES${LV}} src/functions_vt.c src/${LV}lab.c)
+    set(SOURCE_FILES${LV} ${SOURCE_FILES${LV}} src/functions_vt.c src/${LV}lab.c src/bank_robbery_vt.c)
     add_executable(${LV}lab ${SOURCE_FILES${LV}})
 endforeach (LV)
 

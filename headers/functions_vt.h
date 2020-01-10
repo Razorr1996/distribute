@@ -26,6 +26,7 @@ typedef struct {
     pid_t pid;
     pid_t pPid;
     PipeDes pDes[MAX_PROCESS_ID + 1][MAX_PROCESS_ID + 1];
+    timestamp_t timeVector[MAX_PROCESS_ID + 1];
 } __attribute__((packed)) LocalInfo;
 
 int logToFile(int fd, const char *format, ...);
@@ -43,5 +44,13 @@ int closeUsedPipes(LocalInfo *info);
 int preFork(LocalInfo *info);
 
 void setMessage(Message *msg, MessageType type, uint16_t length);
+
+LocalInfo *pInfo;
+
+void increment_vector_time();
+
+void set_vector_time(const Message *msg);
+
+timestamp_t get_vector_time();
 
 #endif //INC_DISTRIBUTED_LAB_BASA62_FUNCTIONS_H
