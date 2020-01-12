@@ -49,7 +49,7 @@ typedef struct {
     timestamp_t s_local_time;   ///< set by sender, depends on particular PA:
     ///< physical time in PA2 or Lamport's scalar
     ///< time in PA3
-    timestamp_t s_local_timevector[MAX_PROCESS_ID]; // time for vector clock
+    timestamp_t s_local_timevector[MAX_PROCESS_ID+1]; // time for vector clock
 } __attribute__((packed)) MessageHeader;
 
 enum {

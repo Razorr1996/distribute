@@ -221,7 +221,6 @@ void setMessage(Message *msg, MessageType type, uint16_t length) {
 
 void increment_vector_time() {
     pInfo->timeVector[pInfo->localID]++;
-    logToFile(pInfo->eventFd, "%d: process %d new time\n", pInfo->timeVector[pInfo->localID], pInfo->localID);
 }
 
 void set_vector_time(const Message *msg) {

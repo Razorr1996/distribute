@@ -25,6 +25,7 @@ void total_sum_snapshot() {
 }
 
 void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
+//    logToFile(pInfo->eventFd, "! %d--[%d]->%d\n", src, amount, dst);
     increment_vector_time();
     Message msg;
     memset(&msg, 0, sizeMessage);
@@ -49,6 +50,7 @@ void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
 
 int updateBalance(BalanceHistory *history, TransferOrder *order, timestamp_t sendTime) {
     timestamp_t nowTime = get_vector_time();
+//    logToFile(pInfo->eventFd, "P %d, T %d; %d--[%d]->%d\n", pInfo->localID, get_vector_time(), order->s_src, order->s_amount, order->s_dst);
     if (nowTime == 0) memset(&history->s_history[0], 0, sizeof(history->s_history[0]));
     history->s_history[history->s_history_len].s_balance_pending_in = 0;
     if (nowTime > 0)
@@ -69,7 +71,8 @@ int updateBalance(BalanceHistory *history, TransferOrder *order, timestamp_t sen
 
 void childStartedMsg(LocalInfo *info, Message *myMsg, BalanceHistory *data) {
     memset(myMsg, 0, sizeMessage);
-    BalanceState state = data[info->localID].s_history[get_vector_time()];
+    logToFile(info->eventFd, "process %d, time in start %d\n", info->localID, get_vector_time());
+    BalanceState state = data->s_history[0];
     myMsg->s_header.s_magic = MESSAGE_MAGIC;
     myMsg->s_header.s_type = STARTED;
     myMsg->s_header.s_local_time = get_vector_time();
@@ -92,7 +95,8 @@ int childLoop(LocalInfo *info, BalanceHistory *data) {
             case TRANSFER: {
                 memcpy(&order, msg.s_payload, msg.s_header.s_payload_len);
                 increment_vector_time();
-                updateBalance(balance, &order, msg.s_header.s_local_time);
+//                logToFile(pInfo->eventFd, "!!!!!!P %d, T %d; %d--[%d]->%d; last %d\n", pInfo->localID, get_vector_time(), order.s_src, order.s_amount, order.s_dst, pInfo->lastMsgPid);
+                updateBalance(balance, &order, get_vector_time());
                 if (order.s_src == info->localID) {
                     msg.s_header.s_local_time = get_vector_time();
                     logToFile(info->eventFd, log_transfer_out_fmt, get_vector_time(), info->localID,
@@ -111,10 +115,10 @@ int childLoop(LocalInfo *info, BalanceHistory *data) {
                 break;
             }
             case STOP: {
-                order.s_dst = 0;
-                order.s_src = info->localID;
-                order.s_amount = 0;
-                updateBalance(balance, &order, get_vector_time());
+//                order.s_dst = 0;
+//                order.s_src = info->localID;
+//                order.s_amount = 0;
+//                updateBalance(balance, &order, get_vector_time());
                 return EXIT_SUCCESS;
             }
             default:
@@ -129,7 +133,7 @@ int child(LocalInfo *info, BalanceHistory *data) {
     closeUnnecessaryPipes(info);
     increment_vector_time();
     {
-        childStartedMsg(info, &msg, data);
+        childStartedMsg(info, &msg, &data[info->localID]);
         logToFile(info->eventFd, msg.s_payload);
         send_multicast(info, &msg);
     }
@@ -154,14 +158,15 @@ int child(LocalInfo *info, BalanceHistory *data) {
     }
     receiveAll(info);
     logToFile(info->eventFd, log_received_all_done_fmt, get_vector_time(), info->localID);
-    increment_vector_time();
-
-    BalanceHistory *balance = &data[info->localID];
-    TransferOrder order;
-    order.s_src = 0;
-    order.s_dst = info->localID;
-    order.s_amount = 0;
-    updateBalance(balance, &order, get_vector_time());
+//    increment_vector_time();
+//
+//    BalanceHistory *balance = &data[info->localID];
+//    TransferOrder order;
+//    order.s_src = 0;
+//    order.s_dst = info->localID;
+//    order.s_amount = 0;
+//    logToFile(info->eventFd, "!!!process %d, time in start %d\n", info->localID, get_vector_time());
+//    updateBalance(balance, &order, get_vector_time());
 
 //    msg.s_header.s_magic = MESSAGE_MAGIC;
 //    msg.s_header.s_type = BALANCE_HISTORY;
