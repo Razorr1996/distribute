@@ -16,6 +16,21 @@
 #include "functions.h"
 #include "banking.h"
 
+void increment_vector_time() {
+    pInfo->timeVector[pInfo->localID]++;
+}
+
+void set_vector_time(const Message *msg) {
+    for (int i = 0; i <= pInfo->nChild; ++i) {
+        if (pInfo->timeVector[i] < msg->s_header.s_local_timevector[i])
+            pInfo->timeVector[i] = msg->s_header.s_local_timevector[i];
+    }
+}
+
+timestamp_t get_vector_time() {
+    return pInfo->timeVector[pInfo->localID];
+}
+
 timestamp_t localTime = 0;
 
 timestamp_t get_lamport_time() {
@@ -51,6 +66,9 @@ int send(void *self, local_id dst, const Message *msg) {
     LocalInfo *info = self;
     if (dst == info->localID)
         return EXIT_SUCCESS;
+#ifdef _VT
+    memcpy(msg->s_header.s_local_timevector, pInfo->timeVector, (MAX_PROCESS_ID + 1) * sizeof(timestamp_t));
+#endif
     size_t n = sizeHeader + msg->s_header.s_payload_len;
     ssize_t res = write(info->pDes[info->localID][dst].writePipe, msg, n);
     if (res != n && errno != EAGAIN) {
@@ -61,6 +79,9 @@ int send(void *self, local_id dst, const Message *msg) {
 
 int send_multicast(void *self, const Message *msg) {
     LocalInfo *info = self;
+#ifdef _VT
+    memcpy(msg->s_header.s_local_timevector, pInfo->timeVector, (MAX_PROCESS_ID + 1) * sizeof(timestamp_t));
+#endif
     for (local_id i = 0; i <= info->nChild; ++i) {
         if (i != info->localID) {
             size_t n = sizeHeader + msg->s_header.s_payload_len;
@@ -83,7 +104,20 @@ int receive(void *self, local_id from, Message *msg) {
             assert(msg->s_header.s_magic == MESSAGE_MAGIC);
             while (1) {
                 res = read(info->pDes[from][info->localID].readPipe, msg->s_payload, msg->s_header.s_payload_len);
-                if (res >= 0) return EXIT_SUCCESS;
+                if (res >= 0) {
+#ifdef _VT
+                    set_vector_time(msg);
+                    switch (msg->s_header.s_type) {
+                        case SNAPSHOT_VTIME:
+                        case SNAPSHOT_ACK:
+                            break;
+                        default:
+                            increment_vector_time();
+                            break;
+                    }
+#endif
+                    return EXIT_SUCCESS;
+                }
             }
         } else usleep(10000);
     }
@@ -102,6 +136,17 @@ int receive_any(void *self, Message *msg) {
                 while (1) {
                     res = read(info->pDes[from][info->localID].readPipe, msg->s_payload, msg->s_header.s_payload_len);
                     if (res >= 0) {
+#ifdef _VT
+                        set_vector_time(msg);
+                        switch (msg->s_header.s_type) {
+                            case SNAPSHOT_VTIME:
+                            case SNAPSHOT_ACK:
+                                break;
+                            default:
+                                increment_vector_time();
+                                break;
+                        }
+#endif
                         return EXIT_SUCCESS;
                     }
                 }
@@ -119,10 +164,12 @@ int receiveAll(LocalInfo *info) {
             receive(info, i, &inMsg);
             logToFile(info->eventFd, "Msg(%2d->%2d):\t%s", i, info->localID, inMsg.s_payload);
         }
+#ifndef _VT
         if (info->lab >= 3) {
             set_lamport_time(inMsg.s_header.s_local_time);
             increment_lamport_time();
         }
+#endif
     }
     return EXIT_SUCCESS;
 }
@@ -197,6 +244,10 @@ void setMessage(Message *msg, MessageType type, uint16_t length) {
     memset(msg, 0, sizeMessage);
     msg->s_header.s_magic = MESSAGE_MAGIC;
     msg->s_header.s_type = type;
+#ifdef _VT
+    msg->s_header.s_local_time = get_vector_time();
+#else
     msg->s_header.s_local_time = get_lamport_time();
+#endif
     msg->s_header.s_payload_len = length;
 }

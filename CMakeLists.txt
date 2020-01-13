@@ -11,9 +11,7 @@ include_directories(headers/pa2345_starter_code)
 link_directories(library)
 link_libraries(runtime)
 
-set(SOURCE_FUNCTIONS src/functions.c)
-
-foreach (LV 2 3)
+foreach (LV 2 3 vt)
     set(SOURCE_FILES${LV} src/bank_robbery.c)
 endforeach (LV)
 
@@ -25,14 +23,13 @@ foreach (LV 5)
     set(SOURCE_FILES${LV} src/phil.c)
 endforeach (LV)
 
-foreach (LV 1 2 3 4 5)
-    set(SOURCE_FILES${LV} ${SOURCE_FILES${LV}} ${SOURCE_FUNCTIONS} src/${LV}lab.c)
+foreach (LV 1 2 3 4 5 vt)
+    set(SOURCE_FILES${LV} ${SOURCE_FILES${LV}} src/functions.c src/${LV}lab.c)
     add_executable(${LV}lab ${SOURCE_FILES${LV}})
 endforeach (LV)
 
 foreach (LV vt)
-    set(SOURCE_FILES${LV} ${SOURCE_FILES${LV}} src/functions_vt.c src/${LV}lab.c src/bank_robbery_vt.c)
-    add_executable(${LV}lab ${SOURCE_FILES${LV}})
+    TARGET_COMPILE_DEFINITIONS(${LV}lab PUBLIC _VT)
 endforeach (LV)
 
 set(SOURCE_FILES_TEST src/test.c)

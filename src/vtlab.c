@@ -18,7 +18,7 @@
 #include "pa2345.h"
 #include "banking.h"
 
-#include "functions_vt.h"
+#include "functions.h"
 
 void total_sum_snapshot() {
 

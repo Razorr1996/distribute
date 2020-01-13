@@ -34,7 +34,9 @@ typedef struct {
     ///< received at t > s_time. PA3 only,
     ///< in other labs must be 0
     /*unused in vector-time*/
+#ifdef _VT
     timestamp_t s_timevector[MAX_PROCESS_ID + 1]; //time for vector clock
+#endif
 } __attribute__((packed)) BalanceState;
 
 enum {

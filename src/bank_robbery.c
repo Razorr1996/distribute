@@ -12,8 +12,16 @@
 void bank_robbery(void *parent_data, local_id max_id) {
     for (int i = 1; i < max_id; ++i) {
         transfer(parent_data, i, i + 1, i);
+#ifdef _VT
+        if (i % 2) {
+            total_sum_snapshot();
+        }
+#endif
     }
     if (max_id > 1) {
         transfer(parent_data, max_id, 1, 1);
+#ifdef _VT
+        total_sum_snapshot();
+#endif
     }
 }

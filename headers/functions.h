@@ -27,11 +27,25 @@ typedef struct {
     pid_t pid;
     pid_t pPid;
     PipeDes pDes[MAX_PROCESS_ID + 1][MAX_PROCESS_ID + 1];
+#ifdef _VT
+    timestamp_t timeVector[MAX_PROCESS_ID + 1];
+#endif
 } __attribute__((packed)) LocalInfo;
 
+#ifdef _VT
+LocalInfo *pInfo;
+
+void increment_vector_time();
+
+void set_vector_time(const Message *msg);
+
+timestamp_t get_vector_time();
+
+#else
 void set_lamport_time(timestamp_t newTime);
 
 void increment_lamport_time();
+#endif
 
 int logToFile(int fd, const char *format, ...);
 
