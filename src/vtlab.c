@@ -46,31 +46,35 @@ void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
     if (res != EXIT_SUCCESS) exitWithError(((LocalInfo *) parent_data)->logFd, errno);
 }
 
-int updateBalance(BalanceHistory *history, TransferOrder *order, timestamp_t sendTime) {
-    timestamp_t nowTime = get_vector_time();
-//    logToFile(pInfo->eventFd, "P %d, T %d; %d--[%d]->%d\n", pInfo->localID, get_vector_time(), order->s_src, order->s_amount, order->s_dst);
-    if (nowTime == 0) memset(&history->s_history[0], 0, sizeof(history->s_history[0]));
-    history->s_history[history->s_history_len].s_balance_pending_in = 0;
-    if (nowTime > 0)
-        for (timestamp_t time = history->s_history_len; time <= nowTime; time++) {
-            history->s_history[time] = history->s_history[time - 1];
-            history->s_history[time].s_time++;
-        }
-    if (order->s_dst == history->s_id)
-        for (timestamp_t time = sendTime; time < nowTime; ++time) {
-//            history->s_history[time].s_balance_pending_in = order->s_dst == history->s_id ? order->s_amount : 0;
-            history->s_history[time].s_balance_pending_in = order->s_amount;
-        }
-    history->s_history[nowTime].s_balance += (order->s_dst == history->s_id ? 1 : -1) * order->s_amount;
-    history->s_history[nowTime].s_balance_pending_in = 0;
-    history->s_history_len = (uint8_t) (nowTime + 1);
+int updateBalance(BalanceHistory *history, TransferOrder *order) {
+    BalanceState *new_state = &history->s_history[history->s_history_len];
+    memset(new_state, 0, sizeof(BalanceState));
+    if (history->s_history_len > 0) {
+        BalanceState *old_state = &history->s_history[history->s_history_len - 1];
+        new_state->s_balance = old_state->s_balance;
+    } else {
+        new_state->s_balance = 0;
+    }
+
+    new_state->s_time = get_vector_time();
+    for (int i = 0; i < pInfo->nChild; ++i) {
+        new_state->s_timevector[i] = pInfo->timeVector[i];
+    }
+
+    if (order->s_dst == history->s_id) {
+        new_state->s_balance += order->s_amount;
+    } else {
+        new_state->s_balance -= order->s_amount;
+    }
+
+    history->s_history_len++;
     return EXIT_SUCCESS;
 }
 
-void childStartedMsg(LocalInfo *info, Message *msg, BalanceHistory *data) {
+void childStartedMsg(LocalInfo *info, Message *msg, BalanceHistory *balance) {
     setMessage(msg, STARTED, 0);
     logToFile(info->eventFd, "process %d, time in start %d\n", info->localID, get_vector_time());
-    BalanceState state = data->s_history[0];
+    BalanceState state = balance->s_history[0];
     snprintf(msg->s_payload, MAX_PAYLOAD_LEN, log_started_fmt, get_vector_time(), info->localID, info->pid,
              info->pPid, state.s_balance);
     msg->s_header.s_payload_len = (uint16_t) strlen(msg->s_payload);
@@ -86,12 +90,15 @@ int childLoop(LocalInfo *info, BalanceHistory *balance) {
         res = receive_any(info, &msg);
         if (res != EXIT_SUCCESS) return res;
         switch (msg.s_header.s_type) {
+            //TODO
             case TRANSFER: {
                 memcpy(&order, msg.s_payload, msg.s_header.s_payload_len);
                 increment_vector_time();
-//                logToFile(pInfo->eventFd, "!!!!!!P %d, T %d; %d--[%d]->%d; last %d\n", pInfo->localID, get_vector_time(), order.s_src, order.s_amount, order.s_dst, pInfo->lastMsgPid);
-                updateBalance(balance, &order, get_vector_time());
+                logToFile(pInfo->eventFd, "!P %d, T %d; %d--[%d]->%d; last %d\n", pInfo->localID, get_vector_time(),
+                          order.s_src, order.s_amount, order.s_dst, pInfo->lastMsgPid);
+                updateBalance(balance, &order);
                 if (order.s_src == info->localID) {
+                    //TODO
                     msg.s_header.s_local_time = get_vector_time();
                     logToFile(info->eventFd, log_transfer_out_fmt, get_vector_time(), info->localID,
                               order.s_amount, order.s_dst);
@@ -134,7 +141,7 @@ int child(LocalInfo *info, BalanceHistory *balance) {
         setMessage(&msg, DONE, 0);
         snprintf(msg.s_payload, MAX_PAYLOAD_LEN, log_done_fmt, get_vector_time(),
                  info->localID,
-                 balance->s_history[get_vector_time()].s_balance);
+                 balance->s_history[balance->s_history_len - 1].s_balance);
         msg.s_header.s_payload_len = (uint16_t) strlen(msg.s_payload);
         logToFile(info->eventFd, msg.s_payload);
 
@@ -161,18 +168,11 @@ int parent(LocalInfo *info) {
     setMessage(&msg, STOP, 0);
     send_multicast(info, &msg);
 
-    logToFile(info->eventFd, "0\n");
     receiveAll(info);
-    logToFile(info->eventFd, "1\n");
-
-    logToFile(info->eventFd, "5.0\n");
     //End Parent work
     closeUsedPipes(info);
-    logToFile(info->eventFd, "6.0\n");
     for (int j = 0; j < info->nChild; ++j) {
-        logToFile(info->eventFd, "7.0\n");
         wait(NULL);
-        logToFile(info->eventFd, "7.1\n");
     }
     logToFile(info->eventFd, "All children end\n");
     close(info->eventFd);
@@ -217,12 +217,13 @@ int main(int argc, char *argv[]) {
     TransferOrder order;
     memset(&order, 0, sizeof(TransferOrder));
     for (int i = 1; i < info->nChild + 1; i++) {
+        memset(&balances[i], 0, sizeof(BalanceHistory));
         balances[i].s_id = i;
         order.s_dst = i;
         order.s_amount = atoi(argv[optind + i - 1]);
         printf("%d:%d\n", i, order.s_amount);
         balances[i].s_history_len = 0;
-        updateBalance(&balances[i], &order, 0);
+        updateBalance(&balances[i], &order);
     }
 
     preFork(info);
