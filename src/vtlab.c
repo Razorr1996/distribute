@@ -81,10 +81,9 @@ void childStartedMsg(LocalInfo *info, Message *myMsg, BalanceHistory *data) {
     myMsg->s_header.s_payload_len = (uint16_t) strlen(myMsg->s_payload);
 }
 
-int childLoop(LocalInfo *info, BalanceHistory *data) {
+int childLoop(LocalInfo *info, BalanceHistory *balance) {
     Message msg;
     TransferOrder order;
-    BalanceHistory *balance = &data[info->localID];
     int res;
     memset(&msg, 0, sizeof msg);
     memset(&order, 0, sizeof order);
@@ -128,25 +127,25 @@ int childLoop(LocalInfo *info, BalanceHistory *data) {
     return EXIT_SUCCESS;
 }
 
-int child(LocalInfo *info, BalanceHistory *data) {
+int child(LocalInfo *info, BalanceHistory *balance) {
     Message msg;
     closeUnnecessaryPipes(info);
     increment_vector_time();
     {
-        childStartedMsg(info, &msg, &data[info->localID]);
+        childStartedMsg(info, &msg, balance);
         logToFile(info->eventFd, msg.s_payload);
         send_multicast(info, &msg);
     }
     receiveAll(info);
 
     logToFile(info->eventFd, log_received_all_started_fmt, get_vector_time(), info->localID);
-    childLoop(info, data);
+    childLoop(info, balance);
     increment_vector_time();
     {
         memset(&msg, 0, sizeMessage);
         snprintf(msg.s_payload, MAX_PAYLOAD_LEN, log_done_fmt, get_vector_time(),
                  info->localID,
-                 data[info->localID].s_history[get_vector_time()].s_balance);
+                 balance->s_history[get_vector_time()].s_balance);
         msg.s_header.s_magic = MESSAGE_MAGIC;
         msg.s_header.s_payload_len = (uint16_t) strlen(msg.s_payload);
         msg.s_header.s_type = DONE;
@@ -274,7 +273,7 @@ int main(int argc, char *argv[]) {
     preFork(info);
 
     if (info->localID != PARENT_ID) {
-        child(info, balances);
+        child(info, &balances[info->localID]);
     } else {
         parent(info);
     }
