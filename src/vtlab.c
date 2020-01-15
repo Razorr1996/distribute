@@ -20,14 +20,60 @@
 
 #include "functions.h"
 
-void total_sum_snapshot() {
+Message msg;
 
+void total_sum_snapshot() {
+    timestamp_t snapshot_time = get_vector_time() + 1;
+    setMessage(&msg, SNAPSHOT_VTIME, sizeof(timestamp_t));
+    memcpy(msg.s_payload, &snapshot_time, sizeof(timestamp_t));
+
+    send_multicast(pInfo, &msg);
+    for (int i = 0; i <= pInfo->nChild; ++i) {
+        if (i == pInfo->localID)
+            continue;
+        while (1){
+            receive(pInfo, i, &msg);
+            if (msg.s_header.s_type == SNAPSHOT_ACK) {
+                break;
+            }
+        }
+    }
+
+    increment_vector_time();
+    setMessage(&msg, EMPTY, 0);
+    send_multicast(pInfo, &msg);
+
+    balance_t sum = 0;
+    for (int i = 0; i <= pInfo->nChild; ++i) {
+        if (i == pInfo->localID)
+            continue;
+        while (1){
+            receive(pInfo, i, &msg);
+            if (msg.s_header.s_type == BALANCE_STATE) {
+                BalanceState *balance = (BalanceState *) msg.s_payload;
+                sum += balance->s_balance;
+                break;
+            }
+        }
+    }
+    logToFile(pInfo->eventFd, format_vector_snapshot,
+              pInfo->timeVector[0],
+              pInfo->timeVector[1],
+              pInfo->timeVector[2],
+              pInfo->timeVector[3],
+              pInfo->timeVector[4],
+              pInfo->timeVector[5],
+              pInfo->timeVector[6],
+              pInfo->timeVector[7],
+              pInfo->timeVector[8],
+              pInfo->timeVector[9],
+              pInfo->timeVector[10],
+              sum);
 }
 
 void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
 //    logToFile(pInfo->eventFd, "! %d--[%d]->%d\n", src, amount, dst);
     increment_vector_time();
-    Message msg;
     memset(&msg, 0, sizeMessage);
 
     setMessage(&msg, TRANSFER, 0);
@@ -81,16 +127,33 @@ void childStartedMsg(LocalInfo *info, Message *msg, BalanceHistory *balance) {
 }
 
 int childLoop(LocalInfo *info, BalanceHistory *balance) {
-    Message msg;
     TransferOrder order;
     int res;
     memset(&msg, 0, sizeof msg);
     memset(&order, 0, sizeof order);
+    timestamp_t snapshot_time_vector[MAX_PROCESS_ID + 1];
+    memset(snapshot_time_vector, 0, (MAX_PROCESS_ID + 1) * sizeof(timestamp_t));
+    local_id snapshot_local_id = -1;
     while (1) {
+        if (snapshot_local_id >= 0) {
+            int flag = 1;
+            for (int i = 0; i <= pInfo->nChild; ++i) {
+                if (pInfo->timeVector[i] < snapshot_time_vector[i]) {
+                    flag = 0;
+                    break;
+                }
+            }
+
+            if (flag == 1) {
+                setMessage(&msg, BALANCE_STATE, sizeof(BalanceState));
+                memcpy(msg.s_payload, &balance->s_history[balance->s_history_len - 1], sizeof(BalanceState));
+                send(info, snapshot_local_id, &msg);
+                snapshot_local_id = -1;
+            }
+        }
         res = receive_any(info, &msg);
         if (res != EXIT_SUCCESS) return res;
         switch (msg.s_header.s_type) {
-            //TODO
             case TRANSFER: {
                 memcpy(&order, msg.s_payload, msg.s_header.s_payload_len);
                 increment_vector_time();
@@ -98,7 +161,6 @@ int childLoop(LocalInfo *info, BalanceHistory *balance) {
                           order.s_src, order.s_amount, order.s_dst, pInfo->lastMsgPid);
                 updateBalance(balance, &order);
                 if (order.s_src == info->localID) {
-                    //TODO
                     msg.s_header.s_local_time = get_vector_time();
                     logToFile(info->eventFd, log_transfer_out_fmt, get_vector_time(), info->localID,
                               order.s_amount, order.s_dst);
@@ -113,6 +175,24 @@ int childLoop(LocalInfo *info, BalanceHistory *balance) {
                 }
                 break;
             }
+            case SNAPSHOT_VTIME: {
+                timestamp_t tmp;
+                tmp = *((timestamp_t *) msg.s_payload);
+
+                snapshot_local_id = info->lastMsgPid;
+
+                for (int i = 0; i <= pInfo->nChild; ++i) {
+                    pInfo->timeVector[i] = msg.s_header.s_local_timevector[i];
+                }
+                pInfo->timeVector[snapshot_local_id] = tmp;
+
+                setMessage(&msg, SNAPSHOT_ACK, 0);
+                send(info, snapshot_local_id, &msg);
+                break;
+            }
+            case EMPTY: {
+                break;
+            }
             case STOP: {
                 return EXIT_SUCCESS;
             }
@@ -124,7 +204,6 @@ int childLoop(LocalInfo *info, BalanceHistory *balance) {
 }
 
 int child(LocalInfo *info, BalanceHistory *balance) {
-    Message msg;
     closeUnnecessaryPipes(info);
     increment_vector_time();
     {
@@ -156,7 +235,6 @@ int child(LocalInfo *info, BalanceHistory *balance) {
 }
 
 int parent(LocalInfo *info) {
-    Message msg;
     closeUnnecessaryPipes(info);
 
     receiveAll(info);
