@@ -182,9 +182,9 @@ int childLoop(LocalInfo *info, BalanceHistory *balance) {
                 snapshot_local_id = info->lastMsgPid;
 
                 for (int i = 0; i <= pInfo->nChild; ++i) {
-                    pInfo->timeVector[i] = msg.s_header.s_local_timevector[i];
+                    snapshot_time_vector[i] = msg.s_header.s_local_timevector[i];
                 }
-                pInfo->timeVector[snapshot_local_id] = tmp;
+                snapshot_time_vector[snapshot_local_id] = tmp;
 
                 setMessage(&msg, SNAPSHOT_ACK, 0);
                 send(info, snapshot_local_id, &msg);
